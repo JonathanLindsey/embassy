@@ -20,6 +20,8 @@ use embedded_io_async::Write;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+const PORT: u16 = 1234;
+
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
@@ -116,8 +118,9 @@ async fn main(spawner: Spawner) {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-        info!("Listening on TCP:1234...");
-        if let Err(e) = socket.accept(1234).await {
+        let address = stack.config_v4().unwrap().address.address();
+        info!("Listening on TCP {}:{}", address, PORT);
+        if let Err(e) = socket.accept(PORT).await {
             warn!("accept error: {:?}", e);
             continue;
         }

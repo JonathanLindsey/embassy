@@ -105,7 +105,8 @@ async fn listen_task(stack: Stack<'static>, id: u8, port: u16) {
         let mut socket = embassy_net::tcp::TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(Duration::from_secs(10)));
 
-        info!("SOCKET {}: Listening on TCP:{}...", id, port);
+        let address = stack.config_v4().unwrap().address.address();
+        info!("SOCKET {}: Listening on TCP {}:{}...", id, address, port);
         if let Err(e) = socket.accept(port).await {
             warn!("accept error: {:?}", e);
             continue;

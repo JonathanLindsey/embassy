@@ -22,6 +22,8 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+const PORT: u16 = 1234;
+
 bind_interrupts!(struct Irqs {
     DMA_IRQ_0 => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>;
 });
@@ -99,7 +101,10 @@ async fn main(spawner: Spawner) {
     let mut buf = [0; 4096];
     loop {
         let mut socket = UdpSocket::new(stack, &mut rx_meta, &mut rx_buffer, &mut tx_meta, &mut tx_buffer);
-        socket.bind(1234).unwrap();
+
+        let address = stack.config_v4().unwrap().address;
+        info!("Listening on UDP {}:{}", address, PORT);
+        socket.bind(PORT).unwrap();
 
         loop {
             let (n, ep) = socket.recv_from(&mut buf).await.unwrap();

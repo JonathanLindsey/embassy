@@ -30,6 +30,7 @@ bind_interrupts!(struct Irqs {
 
 const WIFI_NETWORK: &str = "ssid"; // change to your network SSID
 const WIFI_PASSWORD: &str = "pwd"; // change to your network password
+const PORT: u16 = 1234;
 
 #[embassy_executor::task]
 async fn cyw43_task(runner: cyw43::Runner<'static, cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO0, 0>>>) -> ! {
@@ -124,8 +125,9 @@ async fn main(spawner: Spawner) {
         socket.set_timeout(Some(Duration::from_secs(10)));
 
         control.gpio_set(0, false).await;
-        info!("Listening on TCP:1234...");
-        if let Err(e) = socket.accept(1234).await {
+        let address = stack.config_v4().unwrap().address.address();
+        info!("Listening on TCP {}:{}", address, PORT);
+        if let Err(e) = socket.accept(PORT).await {
             warn!("accept error: {:?}", e);
             continue;
         }

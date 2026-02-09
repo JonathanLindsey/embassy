@@ -26,6 +26,8 @@ use embedded_io_async::Write;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+const PORT: u16 = 1234;
+
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
     DMA_IRQ_0 => embassy_rp::dma::InterruptHandler<DMA_CH0>, embassy_rp::dma::InterruptHandler<DMA_CH1>;
@@ -116,8 +118,9 @@ async fn main(spawner: Spawner) {
         socket.set_timeout(Some(Duration::from_secs(10)));
 
         led.set_low();
-        info!("Listening on TCP:1234...");
-        if let Err(e) = socket.accept(1234).await {
+        let address = stack.config_v4().unwrap().address.address();
+        info!("Listening on TCP {}:{}", address, PORT);
+        if let Err(e) = socket.accept(PORT).await {
             warn!("accept error: {:?}", e);
             continue;
         }
