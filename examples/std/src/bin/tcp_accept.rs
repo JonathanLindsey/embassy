@@ -1,3 +1,7 @@
+use std::io::Write;
+use std::net::TcpStream;
+use std::str::from_utf8;
+
 use clap::Parser;
 use embassy_executor::{Executor, Spawner};
 use embassy_net::tcp::TcpSocket;
@@ -57,12 +61,17 @@ async fn main_task(spawner: Spawner) {
     spawner.spawn(net_task(runner).unwrap());
 
     // Then we can use it!
-    let mut rx_buffer = [0; 4096];
+    let mut rx_buffer = [0; 7];
     let mut tx_buffer = [0; 4096];
+    let mut buf = [0; 4096];
 
     loop {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(Duration::from_secs(10)));
+
+        // To reproduce the issue, set_keep_alive() is required, set_timeout() is not.
+        socket.set_keep_alive(Some(Duration::from_secs(1)));
+        // socket.set_timeout(Some(Duration::from_secs(10)));
+
         info!("Listening on TCP:9999...");
         if let Err(_) = socket.accept(9999).await {
             warn!("accept error");
@@ -71,16 +80,25 @@ async fn main_task(spawner: Spawner) {
 
         info!("Accepted a connection");
 
-        // Write some quick output
-        for i in 1..=5 {
-            let s = format!("{}!  ", i);
-            let r = socket.write_all(s.as_bytes()).await;
-            if let Err(e) = r {
-                warn!("write error: {:?}", e);
-                return;
+        loop {
+            info!("ready to read");
+            match socket.read(&mut buf).await {
+                Ok(0) => {
+                    warn!("socket was closed");
+                    break;
+                },
+                Ok(_) => {},
+                Err(e) => {
+                    warn!("read error: {:?}", e);
+                    break;
+                }
             }
 
-            Timer::after_millis(500).await;
+            info!("rxd {}", from_utf8(&buf).unwrap());
+
+            // Different bad behaviors when delay is different
+            Timer::after_millis(5000).await;
+            // Timer::after_millis(500).await;
         }
         info!("Closing the connection");
         socket.abort();
@@ -88,6 +106,17 @@ async fn main_task(spawner: Spawner) {
         _ = socket.flush().await;
         info!("Finished with the socket");
     }
+}
+
+fn send_freezing_packets() -> std::io::Result<()> {
+    // Server address and port is hard coded in this program
+    let mut stream = TcpStream::connect("192.168.69.2:9999").unwrap();
+
+    let packets = ["012\n", "345\n", "678\n", "901\n", "234\n", "567\n", "890\n", "hi\n"];
+    for packet in packets {
+        stream.write_all(packet.as_bytes())?;
+    }
+    Ok(())
 }
 
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
@@ -99,8 +128,14 @@ fn main() {
         .format_timestamp_nanos()
         .init();
 
-    let executor = EXECUTOR.init(Executor::new());
-    executor.run(|spawner| {
-        spawner.spawn(main_task(spawner).unwrap());
+    let embassy_thread = std::thread::spawn(|| {
+        let executor = EXECUTOR.init(Executor::new());
+        executor.run(|spawner| {
+            spawner.spawn(main_task(spawner).unwrap());
+        });
     });
+
+    send_freezing_packets().unwrap();
+
+    embassy_thread.join().unwrap();
 }
